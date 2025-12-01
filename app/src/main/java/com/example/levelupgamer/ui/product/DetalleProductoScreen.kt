@@ -1,5 +1,6 @@
 package com.example.levelupgamer.ui.product
 
+import android.app.Application
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,11 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.levelupgamer.ui.product.getProductImageRes
 import com.example.levelupgamer.view.ProductoViewModel
 import com.example.levelupgamer.view.CarritoViewModel
 import com.example.levelupgamer.viewmodel.factories.ProductoVMFactory
@@ -32,21 +33,25 @@ fun DetalleProductoScreen(
     navController: NavController,
     productoCodigo: String,
     productoVM: ProductoViewModel = viewModel(factory = ProductoVMFactory()),
-    carritoVM: CarritoViewModel = viewModel(factory = CarritoVMFactory())
+    // ⬇️ tu factory requiere Application, lo tomamos del contexto
+    carritoVM: CarritoViewModel = run {
+        val app = LocalContext.current.applicationContext as Application
+        viewModel(factory = CarritoVMFactory(app))
+    }
 ) {
     var cantidad by remember { mutableStateOf(1) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Trae el producto real desde Room (Flow -> State)
+    // Producto desde Room (Flow -> State)
     val producto by productoVM
         .obtenerProductoPorCodigoFlow(productoCodigo)
         .collectAsState(initial = null)
 
-    // Inicializa el carrito con el usuario actual y el descuento si es Duoc
+    // Inicializa carrito con descuento segun DUOC
     LaunchedEffect(Unit) {
         val desc = if (SessionManager.esDuoc) 20 else 0
-        carritoVM.inicializarCarrito(SessionManager.currentUserId, desc)
+        carritoVM.inicializarCarrito(SessionManager.currentUserId ?: 0, desc)
     }
 
     Scaffold(
@@ -80,15 +85,19 @@ fun DetalleProductoScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Imagen
+            // Imagen del producto
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(300.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant
             ) {
+                val ctx = LocalContext.current
+                val imgRes = remember(producto!!.codigo) {
+                    ImageUtils.productImageRes(ctx, producto!!.codigo)
+                }
                 Image(
-                    painter = painterResource(id = getProductImageRes(producto!!.codigo)),
+                    painter = painterResource(id = imgRes),
                     contentDescription = producto!!.nombre,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -155,10 +164,7 @@ fun DetalleProductoScreen(
                         producto?.let { p ->
                             carritoVM.agregarProducto(p, cantidad)
                             cantidad = 1
-                            // Mostrar snackbar usando coroutines (no LaunchedEffect aquí)
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Producto agregado al carrito")
-                            }
+                            scope.launch { snackbarHostState.showSnackbar("Producto agregado al carrito") }
                         }
                     },
                     modifier = Modifier

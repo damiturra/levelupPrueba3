@@ -1,5 +1,6 @@
 package com.example.levelupgamer.ui.product
 
+import android.app.Application
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,16 +23,20 @@ import androidx.navigation.NavController
 import com.example.levelupgamer.view.CarritoViewModel
 import com.example.levelupgamer.viewmodel.factories.CarritoVMFactory
 import com.example.levelupgamer.data.session.SessionManager
+import kotlin.math.abs
 
 @Composable
 fun CarritoScreen(
-    navController: NavController,
-    carritoVM: CarritoViewModel = viewModel(factory = CarritoVMFactory())
+    navController: NavController
 ) {
-    // Inicializa el carrito para el usuario logeado (usa SessionManager)
+    // ✅ Obtén Application y pásalo al Factory
+    val app = LocalContext.current.applicationContext as Application
+    val carritoVM: CarritoViewModel = viewModel(factory = CarritoVMFactory(app))
+
+    // Inicializa el carrito para el usuario logeado (usa fallback 0 si no hay sesión)
     LaunchedEffect(Unit) {
         val desc = if (SessionManager.esDuoc) 20 else 0
-        carritoVM.inicializarCarrito(SessionManager.currentUserId, desc)
+        carritoVM.inicializarCarrito(SessionManager.currentUserId ?: 0, desc)
     }
 
     val items by carritoVM.items.collectAsState()
@@ -47,22 +53,14 @@ fun CarritoScreen(
             if (items.isNotEmpty() && resumen != null) {
                 Surface(tonalElevation = 3.dp) {
                     Column(Modifier.padding(16.dp)) {
-                        // Resumen de totales
                         SummaryRow("Subtotal:", resumen!!.subtotal)
                         if (resumen!!.descuentoPorcentaje > 0 && resumen!!.descuentoMonto > 0) {
-                            SummaryRow(
-                                "Descuento (${resumen!!.descuentoPorcentaje}%)",
-                                -resumen!!.descuentoMonto
-                            )
+                            SummaryRow("Descuento (${resumen!!.descuentoPorcentaje}%)", -resumen!!.descuentoMonto)
                         }
                         SummaryRow("Base imponible:", resumen!!.baseImponible)
                         SummaryRow("IVA (${resumen!!.ivaPorcentaje}%):", resumen!!.ivaMonto)
                         Divider(Modifier.padding(vertical = 8.dp))
-                        SummaryRow(
-                            "Total:",
-                            resumen!!.total,
-                            highlight = true
-                        )
+                        SummaryRow("Total:", resumen!!.total, highlight = true)
 
                         Spacer(Modifier.height(12.dp))
                         Button(
@@ -189,13 +187,19 @@ private fun SmallTopBar(
 private fun SummaryRow(label: String, amount: Int, highlight: Boolean = false) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.titleMedium)
+        val text = if (amount >= 0) {
+            "$${"%,d".format(amount)}"
+        } else {
+            "-$${"%,d".format(kotlin.math.abs(amount))}"
+        }
         Text(
-            text = if (amount >= 0) "$${"%,d".format(amount)}" else "-$${"%,d".format(kotlin.math.abs(amount))}",
+            text = text,
             style = if (highlight) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
             color = if (highlight) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface
         )
     }
 }
+
 
 @Composable
 private fun EmptyCartState(modifier: Modifier = Modifier) {

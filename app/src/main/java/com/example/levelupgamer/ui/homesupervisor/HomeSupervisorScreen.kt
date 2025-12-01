@@ -17,6 +17,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.levelupgamer.data.model.VendedorEntity
 import com.example.levelupgamer.viewmodel.admin.AdminVendedoresViewModel
+import androidx.compose.material.icons.filled.Logout
+import com.example.levelupgamer.data.session.SessionManager
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,11 +39,26 @@ fun AdminVendedoresScreen(
                     }
                 },
                 actions = {
+                    // 🔹 Cerrar sesión
+                    IconButton(onClick = {
+                        SessionManager.clear()
+                        navController.navigate("login") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Logout,
+                            contentDescription = "Cerrar sesión"
+                        )
+                    }
+
+                    // 🔹 Nuevo vendedor
                     IconButton(onClick = { vm.nueva() }) {
                         Icon(Icons.Default.Add, contentDescription = "Nuevo")
                     }
                 }
             )
+
         }
     ) { padding ->
         Column(

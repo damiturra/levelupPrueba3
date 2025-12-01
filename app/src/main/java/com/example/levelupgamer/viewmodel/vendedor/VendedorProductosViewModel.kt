@@ -27,19 +27,32 @@ class VendedorProductosViewModel(
     private val vendedorIdArg: Long
 ) : AndroidViewModel(app) {
 
-    private val _ui = MutableStateFlow(VendorProdUI(vendedorId = vendedorIdArg))
+    private val _ui = MutableStateFlow(
+        VendorProdUI(vendedorId = vendedorIdArg, isLoading = true)
+    )
     val ui: StateFlow<VendorProdUI> = _ui.asStateFlow()
 
     init {
+        // Observa los productos del vendedor
         viewModelScope.launch {
             repo.observeByVendedor(vendedorIdArg)
-                .catch { e -> _ui.update { it.copy(error = e.message) } }
+                .catch { e ->
+                    _ui.update { it.copy(isLoading = false, error = e.message) }
+                }
                 .collect { list ->
                     _ui.update { it.copy(productos = list, isLoading = false, error = null) }
                 }
         }
     }
 
+    /** Permite forzar un refresh visual (ej. mostrar spinner si quieres) */
+    fun refresh() {
+        _ui.update { it.copy(isLoading = true) }
+        // Al estar colectando el Flow del repo, el UI se actualizará solo cuando cambie la DB.
+        // Si aquí quisieras forzar algo adicional, lo harías con llamadas al repo.
+    }
+
+    /** Abre diálogo con un producto nuevo por defecto */
     fun nuevo() {
         _ui.update {
             it.copy(
@@ -53,16 +66,25 @@ class VendedorProductosViewModel(
                     stock = 100,
                     imagenUrl = "",
                     fabricante = "",
-                    calificacion = 0f,
-                    vendedorId = vendedorIdArg
+                    calificacion = 0f,      // si tu entidad lo tiene
+                    vendedorId = vendedorIdArg,
+                    activo = true           // ✅ por defecto activo
                 )
             )
         }
     }
 
-    fun editar(p: Producto) { _ui.update { it.copy(editando = p) } }
-    fun cancelar() { _ui.update { it.copy(editando = null) } }
+    /** Abre diálogo con un producto existente */
+    fun editar(p: Producto) {
+        _ui.update { it.copy(editando = p) }
+    }
 
+    /** Cierra el diálogo */
+    fun cancelar() {
+        _ui.update { it.copy(editando = null) }
+    }
+
+    /** Guarda (crear/editar). Ahora sí aplica el `activo` recibido. */
     fun guardar(
         nombre: String,
         descripcion: String,
@@ -80,23 +102,35 @@ class VendedorProductosViewModel(
                 precio = precio,
                 categoriaId = categoriaId,
                 categoriaNombre = categoriaNombre.trim(),
-                vendedorId = vendedorIdArg
+                vendedorId = vendedorIdArg,
+                activo = activo                // ✅ APLICADO!
             )
-            if (_ui.value.productos.none { it.codigo == p.codigo }) repo.insert(p) else repo.update(p)
+            // Usa upsert: crea si no existe, actualiza si existe
+            repo.upsert(p)
             _ui.update { it.copy(editando = null, isLoading = false) }
         } catch (e: Exception) {
             _ui.update { it.copy(isLoading = false, error = e.message) }
         }
     }
 
+    /** Elimina por código (versión directa) */
     fun eliminar(codigo: String) = viewModelScope.launch {
         _ui.update { it.copy(isLoading = true, error = null) }
         try {
-            val existente = repo.getByCode(codigo) ?: return@launch
-            repo.delete(existente)
+            repo.eliminarPorCodigo(codigo)
             _ui.update { it.copy(isLoading = false) }
         } catch (e: Exception) {
             _ui.update { it.copy(isLoading = false, error = e.message) }
+        }
+    }
+
+    /** Alternar estado activo in-place (útil para el switch de la card) */
+    fun toggleActivo(codigo: String) = viewModelScope.launch {
+        val actual = ui.value.productos.find { it.codigo == codigo } ?: return@launch
+        try {
+            repo.upsert(actual.copy(activo = !actual.activo))
+        } catch (e: Exception) {
+            _ui.update { it.copy(error = e.message) }
         }
     }
 }

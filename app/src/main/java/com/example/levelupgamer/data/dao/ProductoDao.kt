@@ -1,17 +1,23 @@
 package com.example.levelupgamer.data.dao
 
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
 import com.example.levelupgamer.data.model.Producto
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProductoDao {
 
+    /* ====== Escritura ====== */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertarProducto(producto: Producto)
+    suspend fun upsert(producto: Producto)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertarProductos(productos: List<Producto>)
+    suspend fun upsertAll(productos: List<Producto>)
 
     @Update
     suspend fun actualizarProducto(producto: Producto)
@@ -19,6 +25,10 @@ interface ProductoDao {
     @Delete
     suspend fun eliminarProducto(producto: Producto)
 
+    @Query("DELETE FROM productos WHERE codigo = :codigo")
+    suspend fun deleteByCodigo(codigo: String)
+
+    /* ====== Lectura general ====== */
     @Query("SELECT * FROM productos")
     fun obtenerTodosLosProductos(): Flow<List<Producto>>
 
@@ -31,10 +41,19 @@ interface ProductoDao {
     @Query("SELECT * FROM productos WHERE categoriaId = :categoriaId")
     fun obtenerProductosPorCategoria(categoriaId: Int): Flow<List<Producto>>
 
-    @Query("SELECT * FROM productos WHERE nombre LIKE '%' || :busqueda || '%' OR descripcion LIKE '%' || :busqueda || '%'")
+    @Query("""
+        SELECT * FROM productos 
+        WHERE nombre LIKE '%' || :busqueda || '%' 
+           OR descripcion LIKE '%' || :busqueda || '%'
+    """)
     fun buscarProductos(busqueda: String): Flow<List<Producto>>
 
-    @Query("SELECT * FROM productos WHERE categoriaId = :categoriaId AND (nombre LIKE '%' || :busqueda || '%' OR descripcion LIKE '%' || :busqueda || '%')")
+    @Query("""
+        SELECT * FROM productos 
+        WHERE categoriaId = :categoriaId 
+          AND ( nombre LIKE '%' || :busqueda || '%' 
+             OR descripcion LIKE '%' || :busqueda || '%' )
+    """)
     fun buscarProductosPorCategoria(categoriaId: Int, busqueda: String): Flow<List<Producto>>
 
     @Query("SELECT * FROM productos ORDER BY precio ASC")
@@ -43,13 +62,14 @@ interface ProductoDao {
     @Query("SELECT * FROM productos ORDER BY precio DESC")
     fun obtenerProductosOrdenadosPorPrecioDesc(): Flow<List<Producto>>
 
+    /* ✅ Requiere que tu entidad Producto tenga el campo `calificacion` (Float/Int) */
     @Query("SELECT * FROM productos ORDER BY calificacion DESC")
     fun obtenerProductosOrdenadosPorCalificacion(): Flow<List<Producto>>
 
     @Query("SELECT COUNT(*) FROM productos")
     suspend fun contarProductos(): Int
 
-    // 🔥 NECESARIO para el panel de vendedor
+    /* ====== Panel Vendedor ====== */
     @Query("SELECT * FROM productos WHERE vendedorId = :vendedorId ORDER BY nombre ASC")
     fun observeByVendedor(vendedorId: Long): Flow<List<Producto>>
 }

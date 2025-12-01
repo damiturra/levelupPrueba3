@@ -1,5 +1,6 @@
 package com.example.levelupgamer.ui.login
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,21 +12,22 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.levelupgamer.viewmodel.LoginViewModel
+import androidx.navigation.NavController
 import com.example.levelupgamer.R
+import com.example.levelupgamer.data.user.Role
+import com.example.levelupgamer.viewmodel.LoginViewModel
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import com.example.levelupgamer.data.user.Role
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +86,7 @@ fun LoginScreen(
                 value = uiState.email,
                 onValueChange = { viewModel.onEmailChange(it) },
                 label = { Text("Correo electrónico") },
-                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                leadingIcon = { Icon(Icons.Default.Email, null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading
@@ -94,7 +96,7 @@ fun LoginScreen(
                 value = uiState.password,
                 onValueChange = { viewModel.onPasswordChange(it) },
                 label = { Text("Contraseña") },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                leadingIcon = { Icon(Icons.Default.Lock, null) },
                 trailingIcon = {
                     IconButton(onClick = { showPassword = !showPassword }) {
                         Icon(
@@ -119,41 +121,67 @@ fun LoginScreen(
                 }
             }
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Text("👤 Usuarios de prueba:", style = MaterialTheme.typography.labelMedium)
-                    Spacer(Modifier.height(4.dp))
-                    Text("• damian@duoc.cl / 123456  (USER)")
-                    Text("• jean@duoc.cl / 123456    (USER)")
-                    Text("• damian@vendedor.cl / 123456  (VENDEDOR)")
-                    Text("• jean@vendedor.cl / 123456    (VENDEDOR)")
-                    Text("• damian@admin.cl / 123456  (ADMIN)")
-                    Text("• jean@admin.cl / 123456    (ADMIN)")
+            // ————— Usuarios de prueba
+            var showDemo by rememberSaveable { mutableStateOf(false) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Usuarios de prueba", style = MaterialTheme.typography.labelLarge)
+                TextButton(onClick = { showDemo = !showDemo }) {
+                    Text(if (showDemo) "Ocultar" else "Ver")
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            AnimatedVisibility(visible = showDemo) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        val lineStyle = MaterialTheme.typography.bodySmall
+                        Text("• damian@duoc.cl / 123456  (USER)", style = lineStyle)
+                        Text("• jean@duoc.cl / 123456    (USER)", style = lineStyle)
+                        Text("• damian@vendedor.cl / 123456  (VENDEDOR)", style = lineStyle)
+                        Text("• jean@vendedor.cl / 123456    (VENDEDOR)", style = lineStyle)
+                        Text("• damian@admin.cl / 123456  (ADMIN)", style = lineStyle)
+                        Text("• jean@admin.cl / 123456    (ADMIN)", style = lineStyle)
+                    }
+                }
+            }
+            // ————————————————————————————————————————————————
 
             Button(
                 onClick = {
-                    viewModel.hacerLogin { nombreUsuario, esUsuarioDuoc, role ->
+                    viewModel.hacerLogin { nombreUsuario, _, role ->
                         when (role) {
                             Role.USER -> navController.navigate("homeUsuario/$nombreUsuario") {
                                 popUpTo("login") { inclusive = true }
                             }
                             Role.VENDEDOR -> {
-                                val vendId = com.example.levelupgamer.data.session.SessionManager.currentVendedorId ?: 0L
-                                navController.navigate("homeVendedor/$vendId") {                // 👈 usa el Long del Session
+                                // Demo: mapea el correo a un vendedorId Long
+                                val vendedorId = when (uiState.email.trim().lowercase()) {
+                                    "damian@vendedor.cl" -> 1L
+                                    "jean@vendedor.cl"   -> 2L
+                                    else                 -> 1L // fallback
+                                }
+                                navController.navigate("homeVendedor/$vendedorId") {
                                     popUpTo("login") { inclusive = true }
                                 }
                             }
                             Role.ADMIN -> {
-                                navController.navigate("homeSupervisor") {                       // 👈 sin args
+                                navController.navigate("homeSupervisor") {
                                     popUpTo("login") { inclusive = true }
                                 }
                             }
                         }
-
                     }
                 },
                 enabled = !uiState.isLoading,
@@ -171,25 +199,14 @@ fun LoginScreen(
                 }
             }
 
+
+            // Enlace claro para registrarse
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("¿No tienes cuenta? ")
-                TextButton(onClick = { /* navController.navigate("registro") */ }) {
+                TextButton(onClick = { navController.navigate("registro") }) {
                     Text("Regístrate", color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
-    }
-}
-
-/**
- * Demo: mapea un email de vendedor a un vendedorId (Long) para la ruta homeVendedor/{vendedorId}.
- * Cuando quieras, cambia esto para consultar Room (VendedorDao) y traer el ID real.
- */
-private fun mapEmailToVendedorId(email: String): Long {
-    // mapping de ejemplo
-    return when (email.trim().lowercase()) {
-        "damian@vendedor.cl" -> 1L
-        "jean@vendedor.cl" -> 2L
-        else -> 1L // fallback
     }
 }

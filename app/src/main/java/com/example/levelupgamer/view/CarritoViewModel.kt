@@ -1,160 +1,144 @@
 package com.example.levelupgamer.view
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.levelupgamer.data.model.ItemCarrito
-import com.example.levelupgamer.data.model.Producto
-import com.example.levelupgamer.data.model.ResumenCarrito
 import com.example.levelupgamer.data.repository.CarritoRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
+data class ResumenCarrito(
+    val subtotal: Int = 0,
+    val descuentoPorcentaje: Int = 0,
+    val descuentoMonto: Int = 0,
+    val baseImponible: Int = 0,
+    val ivaPorcentaje: Int = 19,
+    val ivaMonto: Int = 0,
+    val total: Int = 0
+)
+
+/**
+ * ViewModel para manejar el carrito.
+ * Depende de CarritoRepository y se inicializa con un userId (0 = invitado).
+ */
 class CarritoViewModel(
     private val repository: CarritoRepository
 ) : ViewModel() {
 
-    private val _items = MutableStateFlow<List<ItemCarrito>>(emptyList())
-    val items: StateFlow<List<ItemCarrito>> = _items.asStateFlow()
+    // ---- Estado principal ----
+    private val _userId = MutableStateFlow(0)                // 0 = invitado
+    private val _descPorcentaje = MutableStateFlow(0)        // p.ej. 20 si es DUOC
 
-    private val _resumen = MutableStateFlow<ResumenCarrito?>(null)
-    val resumen: StateFlow<ResumenCarrito?> = _resumen.asStateFlow()
+    /** Ítems del carrito observables */
+    val items: StateFlow<List<ItemCarrito>> =
+        _userId.flatMapLatest { uid ->
+            if (uid <= 0) flowOf(emptyList())
+            else repository.observeItems(uid).map { it ?: emptyList() }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _cantidadItems = MutableStateFlow(0)
-    val cantidadItems: StateFlow<Int> = _cantidadItems.asStateFlow()
+    /** Cantidad total (para badge) */
+    val cantidadItems: StateFlow<Int> =
+        _userId.flatMapLatest { uid ->
+            if (uid <= 0) flowOf(0)
+            else repository.observeCount(uid).map { it ?: 0 }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    var carritoState by mutableStateOf(CarritoState())
-        private set
+    /** Resumen (subtotal, descuentos, IVA, total) */
+    val resumen: StateFlow<ResumenCarrito?> =
+        combine(
+            _userId.flatMapLatest { uid ->
+                if (uid <= 0) flowOf(0)
+                else repository.observeSubtotal(uid).map { it ?: 0 }
+            },
+            _descPorcentaje
+        ) { subtotal, descPct ->
+            calcularResumen(subtotal, descPct)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    private var usuarioIdActual: Int = 0
-    private var descuentoPorcentaje: Int = 0
-
-    fun inicializarCarrito(usuarioId: Int, descuento: Int) {
-        usuarioIdActual = usuarioId
-        descuentoPorcentaje = descuento
-        cargarCarrito()
+    // ---- Setup ----
+    /**
+     * Debe llamarse al entrar a pantallas de carrito o detalle:
+     * - userId: id del usuario logeado (0 si invitado)
+     * - descuentoPorcentaje: p.ej. 20 para DUOC
+     */
+    fun inicializarCarrito(userId: Int?, descuentoPorcentaje: Int = 0) {
+        _userId.value = (userId ?: 0).coerceAtLeast(0)
+        _descPorcentaje.value = descuentoPorcentaje.coerceIn(0, 100)
     }
 
-    private fun cargarCarrito() {
+    // ---- Operaciones ----
+    fun agregarProducto(producto: com.example.levelupgamer.data.model.Producto, cantidad: Int = 1) {
+        val uid = _userId.value
+        if (uid < 0) return
+
         viewModelScope.launch {
-            repository.obtenerCarritoPorUsuario(usuarioIdActual).collect { items ->
-                _items.value = items
-                _cantidadItems.value = items.size
-                calcularResumen(items)
+            val existente = repository.findItem(uid, producto.codigo)
+            val nuevo = if (existente == null) {
+                ItemCarrito(
+                    userId = uid,
+                    productoCodigo = producto.codigo,
+                    productoNombre = producto.nombre,
+                    productoPrecio = producto.precio,
+                    cantidad = cantidad.coerceAtLeast(1)
+                )
+            } else {
+                existente.copy(cantidad = (existente.cantidad + cantidad).coerceAtLeast(1))
             }
-        }
-    }
-
-    private fun calcularResumen(items: List<ItemCarrito>) {
-        _resumen.value = ResumenCarrito.calcular(items, descuentoPorcentaje)
-    }
-
-    fun agregarProducto(producto: Producto, cantidad: Int = 1) {
-        viewModelScope.launch {
-            carritoState = carritoState.copy(isLoading = true, mensaje = null)
-
-            val resultado = repository.agregarProductoAlCarrito(
-                usuarioId = usuarioIdActual,
-                producto = producto,
-                cantidad = cantidad
-            )
-
-            val mensaje = when (resultado) {
-                is com.example.levelupgamer.data.repository.AgregarCarritoResult.Agregado ->
-                    "Producto agregado al carrito"
-                is com.example.levelupgamer.data.repository.AgregarCarritoResult.ActualizadoCantidad ->
-                    "Cantidad actualizada a ${resultado.nuevaCantidad}"
-            }
-
-            carritoState = carritoState.copy(
-                isLoading = false,
-                mensaje = mensaje,
-                mostrarMensaje = true
-            )
-        }
-    }
-
-    fun actualizarCantidad(item: ItemCarrito, nuevaCantidad: Int) {
-        if (nuevaCantidad <= 0) {
-            eliminarItem(item)
-            return
-        }
-
-        viewModelScope.launch {
-            repository.actualizarCantidad(
-                itemId = item.id,
-                cantidad = nuevaCantidad,
-                precio = item.productoPrecio
-            )
+            repository.upsert(nuevo)
         }
     }
 
     fun incrementarCantidad(item: ItemCarrito) {
-        actualizarCantidad(item, item.cantidad + 1)
+        viewModelScope.launch {
+            repository.upsert(item.copy(cantidad = item.cantidad + 1))
+        }
     }
 
     fun decrementarCantidad(item: ItemCarrito) {
-        actualizarCantidad(item, item.cantidad - 1)
+        if (item.cantidad <= 1) return
+        viewModelScope.launch {
+            repository.upsert(item.copy(cantidad = item.cantidad - 1))
+        }
     }
 
     fun eliminarItem(item: ItemCarrito) {
         viewModelScope.launch {
-            repository.eliminarItemCarrito(item)
-            carritoState = carritoState.copy(
-                mensaje = "Producto eliminado del carrito",
-                mostrarMensaje = true
-            )
+            repository.delete(item)
         }
     }
 
-    fun vaciarCarrito() {
-        viewModelScope.launch {
-            repository.vaciarCarrito(usuarioIdActual)
-            carritoState = carritoState.copy(
-                mensaje = "Carrito vaciado",
-                mostrarMensaje = true
-            )
-        }
-    }
-
-    fun ocultarMensaje() {
-        carritoState = carritoState.copy(mostrarMensaje = false, mensaje = null)
-    }
-
-    fun finalizarCompra(onSuccess: () -> Unit) {
-        if (_items.value.isEmpty()) {
-            carritoState = carritoState.copy(
-                error = "El carrito está vacío",
-                mostrarMensaje = true
-            )
+    /**
+     * Simula el “checkout”: limpia el carrito y ejecuta un callback (volver atrás, etc.)
+     */
+    fun finalizarCompra(onDone: (() -> Unit)? = null) {
+        val uid = _userId.value
+        if (uid <= 0) {
+            onDone?.invoke()
             return
         }
-
         viewModelScope.launch {
-            carritoState = carritoState.copy(isLoading = true)
-
-            kotlinx.coroutines.delay(1000)
-
-            repository.vaciarCarrito(usuarioIdActual)
-
-            carritoState = carritoState.copy(
-                isLoading = false,
-                mensaje = "¡Compra realizada con éxito!",
-                mostrarMensaje = true
-            )
-
-            onSuccess()
+            repository.clear(uid)
+            onDone?.invoke()
         }
     }
-}
 
-data class CarritoState(
-    val isLoading: Boolean = false,
-    val mensaje: String? = null,
-    val error: String? = null,
-    val mostrarMensaje: Boolean = false
-)
+    // ---- Helpers ----
+    private fun calcularResumen(subtotal: Int, descuentoPorcentaje: Int): ResumenCarrito {
+        val descMonto = ((subtotal * (descuentoPorcentaje / 100.0)).roundToInt()).coerceAtLeast(0)
+        val base = (subtotal - descMonto).coerceAtLeast(0)
+        val ivaPct = 19
+        val ivaMonto = ((base * (ivaPct / 100.0)).roundToInt()).coerceAtLeast(0)
+        val total = base + ivaMonto
+
+        return ResumenCarrito(
+            subtotal = subtotal,
+            descuentoPorcentaje = descuentoPorcentaje,
+            descuentoMonto = descMonto,
+            baseImponible = base,
+            ivaPorcentaje = ivaPct,
+            ivaMonto = ivaMonto,
+            total = total
+        )
+    }
+}

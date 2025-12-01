@@ -1,5 +1,6 @@
 package com.example.levelupgamer.ui.home
 
+import android.app.Application
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,26 +8,41 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.levelupgamer.ui.product.getProductImageRes
-import com.example.levelupgamer.view.ProductoViewModel
-import com.example.levelupgamer.viewmodel.factories.ProductoVMFactory
-
-// Carrito + Sesión
-import com.example.levelupgamer.view.CarritoViewModel
-import com.example.levelupgamer.viewmodel.factories.CarritoVMFactory
 import com.example.levelupgamer.data.session.SessionManager
-
+import com.example.levelupgamer.ui.product.ImageUtils
+import com.example.levelupgamer.view.CarritoViewModel
+import com.example.levelupgamer.view.ProductoViewModel
+import com.example.levelupgamer.viewmodel.factories.CarritoVMFactory
+import com.example.levelupgamer.viewmodel.factories.ProductoVMFactory
+import androidx.compose.material3.ExperimentalMaterial3Api
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -38,54 +54,48 @@ fun HomeScreen(
     // Productos desde Room
     val productos by viewModel.productos.collectAsState(initial = emptyList())
 
-    // Carrito + contador
-    val carritoVM: CarritoViewModel = viewModel(factory = CarritoVMFactory())
+    // Carrito + contador (factory requiere Application)
+    val app = LocalContext.current.applicationContext as Application
+    val carritoVM: CarritoViewModel = viewModel(factory = CarritoVMFactory(app))
     val count by carritoVM.cantidadItems.collectAsState(initial = 0)
 
-    // Inicializa carrito con descuento DUOC
+    // Inicializa carrito con descuento DUOC (fallback userId = 0 si no hay sesión)
     LaunchedEffect(Unit) {
         val desc = if (SessionManager.esDuoc) 20 else 0
-        carritoVM.inicializarCarrito(SessionManager.currentUserId, desc)
+        carritoVM.inicializarCarrito(SessionManager.currentUserId ?: 0, desc)
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("LEVEL-UP GAMER") },
                 actions = {
-                    // 🔹 Abrir mapa de sucursales (ruta sin parámetros)
                     IconButton(onClick = { navController.navigate("mapaSucursales") }) {
-                        Icon(Icons.Default.Map, contentDescription = "Mapa sucursales")
+                        Icon(Icons.Filled.Map, contentDescription = "Mapa sucursales")
                     }
-                    // Si quieres pasar coordenadas específicas:
-                    // IconButton(onClick = {
-                    //     navController.navigate("mapaSucursales/-33.5435/-70.5750")
-                    // }) { Icon(Icons.Default.Map, null) }   navController.navigat
 
-                    // Carrito con badge
                     IconButton(onClick = { navController.navigate("carrito") }) {
-                        BadgedBox(
-                            badge = { if (count > 0) Badge { Text(count.toString()) } }
-                        ) {
-                            Icon(Icons.Default.ShoppingCart, contentDescription = "Carrito")
+                        BadgedBox(badge = { if (count > 0) Badge { Text(count.toString()) } }) {
+                            Icon(Icons.Filled.ShoppingCart, contentDescription = "Carrito")
                         }
                     }
 
                     IconButton(onClick = { navController.navigate("perfil/$username") }) {
-                        Icon(Icons.Default.Person, contentDescription = "Perfil")
+                        Icon(Icons.Filled.Person, contentDescription = "Perfil")
                     }
+
                     IconButton(onClick = {
-                        navController.navigate("login") {
-                            popUpTo(0) { inclusive = true }
-                        }
+                        SessionManager.clear()
+                        navController.navigate("login") { popUpTo(0) { inclusive = true } }
                     }) {
-                        Icon(Icons.Default.Logout, contentDescription = "Cerrar Sesión")
+                        Icon(Icons.Filled.Logout, contentDescription = "Cerrar Sesión")
                     }
+
                     IconButton(onClick = { navController.navigate("scanner") }) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear QR")
+                        Icon(Icons.Filled.QrCodeScanner, contentDescription = "Escanear QR")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.primary
                 )
@@ -118,7 +128,7 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Default.Verified,
+                                Icons.Filled.Verified,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.secondary
@@ -132,10 +142,9 @@ fun HomeScreen(
                         }
                     }
 
-                    // 🔹 CTA para abrir el mapa de sucursales
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(onClick = { navController.navigate("mapaSucursales") }) {
-                        Icon(Icons.Default.Map, contentDescription = null)
+                        Icon(Icons.Filled.Map, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("Ver sucursales cercanas")
                     }
@@ -143,6 +152,7 @@ fun HomeScreen(
             }
 
             // Grilla de productos
+            val ctx = LocalContext.current
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(16.dp),
@@ -150,6 +160,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(productos, key = { it.codigo }) { p ->
+                    val imgRes = remember(p.codigo) { ImageUtils.productImageRes(ctx, p.codigo) }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -158,7 +169,7 @@ fun HomeScreen(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Image(
-                                painter = painterResource(id = getProductImageRes(p.codigo)),
+                                painter = painterResource(id = imgRes),
                                 contentDescription = p.nombre,
                                 modifier = Modifier
                                     .height(120.dp)

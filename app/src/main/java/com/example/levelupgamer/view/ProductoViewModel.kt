@@ -88,14 +88,6 @@ class ProductoViewModel(
         }
     }
 
-    fun ordenarProductosPorCalificacion() {
-        viewModelScope.launch {
-            repository.obtenerProductosOrdenadosPorCalificacion().collect { list ->
-                _productos.value = list
-            }
-        }
-    }
-
     // ---------- PRODUCTO INDIVIDUAL ----------
     /** Flow directo desde Room (úsalo con collectAsState en la UI). */
     fun obtenerProductoPorCodigoFlow(codigo: String): Flow<Producto?> =
@@ -128,10 +120,9 @@ class ProductoViewModel(
     fun onOrdenChange(orden: OrdenProductos) {
         filtroState = filtroState.copy(orden = orden)
         when (orden) {
-            OrdenProductos.PRECIO_ASC   -> ordenarProductosPorPrecioAsc()
-            OrdenProductos.PRECIO_DESC  -> ordenarProductosPorPrecioDesc()
-            OrdenProductos.CALIFICACION -> ordenarProductosPorCalificacion()
-            OrdenProductos.NINGUNO      -> cargarProductos()
+            OrdenProductos.PRECIO_ASC  -> ordenarProductosPorPrecioAsc()
+            OrdenProductos.PRECIO_DESC -> ordenarProductosPorPrecioDesc()
+            OrdenProductos.NINGUNO     -> cargarProductos()
         }
     }
 
@@ -148,9 +139,11 @@ data class FiltroState(
     val orden: OrdenProductos = OrdenProductos.NINGUNO
 )
 
+/**
+ * OJO: quitamos CALIFICACION para que no rompa si tu entidad/DAO no lo soportan.
+ */
 enum class OrdenProductos {
     NINGUNO,
     PRECIO_ASC,
-    PRECIO_DESC,
-    CALIFICACION
+    PRECIO_DESC
 }

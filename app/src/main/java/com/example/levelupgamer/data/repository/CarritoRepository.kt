@@ -2,69 +2,43 @@ package com.example.levelupgamer.data.repository
 
 import com.example.levelupgamer.data.dao.CarritoDao
 import com.example.levelupgamer.data.model.ItemCarrito
-import com.example.levelupgamer.data.model.Producto
 import kotlinx.coroutines.flow.Flow
 
-class CarritoRepository(private val carritoDao: CarritoDao) {
+class CarritoRepository(
+    private val dao: CarritoDao
+) {
 
-    fun obtenerCarritoPorUsuario(usuarioId: Int): Flow<List<ItemCarrito>> {
-        return carritoDao.obtenerCarritoPorUsuario(usuarioId)
-    }
+    /* ========= Observables ========= */
 
-    suspend fun agregarProductoAlCarrito(
-        usuarioId: Int,
-        producto: Producto,
-        cantidad: Int = 1
-    ): AgregarCarritoResult {
-        val itemExistente = carritoDao.obtenerItemCarrito(usuarioId, producto.codigo)
+    /** Lista completa del carrito del usuario (para la UI de la lista). */
+    fun observeItems(userId: Int): Flow<List<ItemCarrito>> =
+        dao.observeByUser(userId)
 
-        return if (itemExistente != null) {
-            val nuevaCantidad = itemExistente.cantidad + cantidad
-            val nuevoSubtotal = producto.precio * nuevaCantidad
+    /** Cantidad total de ítems (para badges/toolbar). */
+    fun observeCount(userId: Int): Flow<Int?> =
+        dao.observeCount(userId)
 
-            carritoDao.actualizarCantidad(
-                itemId = itemExistente.id,
-                cantidad = nuevaCantidad,
-                subtotal = nuevoSubtotal
-            )
-            AgregarCarritoResult.ActualizadoCantidad(nuevaCantidad)
-        } else {
-            val nuevoItem = ItemCarrito(
-                usuarioId = usuarioId,
-                productoCodigo = producto.codigo,
-                productoNombre = producto.nombre,
-                productoPrecio = producto.precio,
-                cantidad = cantidad,
-                subtotal = producto.precio * cantidad
-            )
-            carritoDao.agregarItemCarrito(nuevoItem)
-            AgregarCarritoResult.Agregado
-        }
-    }
+    /** Subtotal (suma de precio*cantidad) para cálculos de resumen. */
+    fun observeSubtotal(userId: Int): Flow<Int?> =
+        dao.observeSubtotal(userId)
 
-    suspend fun actualizarCantidad(itemId: Int, cantidad: Int, precio: Int) {
-        val nuevoSubtotal = precio * cantidad
-        carritoDao.actualizarCantidad(itemId, cantidad, nuevoSubtotal)
-    }
+    /* ========= Consultas puntuales ========= */
 
-    suspend fun eliminarItemCarrito(item: ItemCarrito) {
-        carritoDao.eliminarItemCarrito(item)
-    }
+    /** Busca un item específico por código de producto. */
+    suspend fun findItem(userId: Int, productoCodigo: String): ItemCarrito? =
+        dao.findItem(userId, productoCodigo)
 
-    suspend fun vaciarCarrito(usuarioId: Int) {
-        carritoDao.vaciarCarrito(usuarioId)
-    }
+    /* ========= Escritura ========= */
 
-    fun contarItemsCarrito(usuarioId: Int): Flow<Int> {
-        return carritoDao.contarItemsCarrito(usuarioId)
-    }
+    /** Inserta/actualiza un ítem del carrito. */
+    suspend fun upsert(item: ItemCarrito) =
+        dao.upsert(item)
 
-    fun obtenerTotalCarrito(usuarioId: Int): Flow<Int?> {
-        return carritoDao.obtenerTotalCarrito(usuarioId)
-    }
-}
+    /** Elimina un ítem concreto. */
+    suspend fun delete(item: ItemCarrito) =
+        dao.delete(item)
 
-sealed class AgregarCarritoResult {
-    object Agregado : AgregarCarritoResult()
-    data class ActualizadoCantidad(val nuevaCantidad: Int) : AgregarCarritoResult()
+    /** Limpia todo el carrito del usuario. */
+    suspend fun clear(userId: Int) =
+        dao.clearByUser(userId)
 }
